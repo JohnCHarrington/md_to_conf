@@ -212,6 +212,31 @@ def convert_info_macros(html):
 
     return html
 
+def convert_latex(html):
+    latex_tag= '''
+<ac:structured-macro ac:name="mathblock" ac:schema-version="1">
+<ac:parameter ac:name="body">
+--uriencoded--
+{content}
+</ac:parameter>
+</ac:structured-macro>
+'''
+    latex_tag_inline = '''
+<ac:structured-macro ac:name="mathinline" ac:schema-version="1">
+<ac:parameter ac:name="body">
+--uriencoded--
+{content}
+</ac:parameter>
+</ac:structured-macro>
+'''
+
+    latex_blocks_inline = re.findall(r'(<span class="arithmatex">.*?<script type="math/tex".*?>(.*?)</script></span>)', html, re.DOTALL)
+    if latex_blocks_inline:
+        for tag, content in latex_blocks_inline:
+            html = html.replace(tag, latex_tag_inline.format(content=content).replace('\n',''))
+
+    return html
+
 
 def convert_doctoc(html):
     """
@@ -385,9 +410,14 @@ def add_images(page_id, html):
     :param html: html string
     :return: html with modified image reference
     """
+    image_tag = '''
+<ac:image ac:align="center" ac:layout="center" ac:alt="png" ac:width="680" ac:src="{rel_path}">
+<ri:url ri:value="{rel_path}" />
+</ac:image>
+'''
     source_folder = os.path.dirname(os.path.abspath(MARKDOWN_FILE))
 
-    for tag in re.findall('<img(.*?)\/>', html):
+    for tag in re.findall('(<img.*?\/>)', html):
         rel_path = re.search('src="(.*?)"', tag).group(1)
         alt_text = re.search('alt="(.*?)"', tag).group(1)
         abs_path = os.path.join(source_folder, rel_path)
@@ -395,11 +425,11 @@ def add_images(page_id, html):
         upload_attachment(page_id, abs_path, alt_text)
         if re.search('http.*', rel_path) is None:
             if CONFLUENCE_API_URL.endswith('/wiki'):
-                html = html.replace('%s' % (rel_path),
-                                    '/wiki/download/attachments/%s/%s' % (page_id, basename))
+                rel_path = '/wiki/download/attachments/%s/%s' % (page_id, basename)
             else:
-                html = html.replace('%s' % (rel_path),
-                                    '/download/attachments/%s/%s' % (page_id, basename))
+                rel_path = '/download/attachments/%s/%s' % (page_id, basename)
+
+        html = html.replace(tag, image_tag.format(rel_path=rel_path))
     return html
 
 
@@ -411,15 +441,15 @@ def add_contents(html):
     :return: modified html string
     """
     contents_markup = '<ac:structured-macro ac:name="toc">\n<ac:parameter ac:name="printable">' \
-                     'true</ac:parameter>\n<ac:parameter ac:name="style">disc</ac:parameter>'
+                      'true</ac:parameter>\n<ac:parameter ac:name="style">disc</ac:parameter>'
     contents_markup = contents_markup + '<ac:parameter ac:name="maxLevel">5</ac:parameter>\n' \
-                                      '<ac:parameter ac:name="minLevel">1</ac:parameter>'
+                                        '<ac:parameter ac:name="minLevel">1</ac:parameter>'
     contents_markup = contents_markup + '<ac:parameter ac:name="class">rm-contents</ac:parameter>\n' \
-                                      '<ac:parameter ac:name="exclude"></ac:parameter>\n' \
-                                      '<ac:parameter ac:name="type">list</ac:parameter>'
+                                        '<ac:parameter ac:name="exclude"></ac:parameter>\n' \
+                                        '<ac:parameter ac:name="type">list</ac:parameter>'
     contents_markup = contents_markup + '<ac:parameter ac:name="outline">false</ac:parameter>\n' \
-                                      '<ac:parameter ac:name="include"></ac:parameter>\n' \
-                                      '</ac:structured-macro>'
+                                        '<ac:parameter ac:name="include"></ac:parameter>\n' \
+                                        '</ac:structured-macro>'
 
     html = contents_markup + '\n' + html
     return html
@@ -451,15 +481,15 @@ def add_local_refs(page_id, title, html):
     """
 
     ref_prefixes = {
-      "bitbucket": "#markdown-header-"
+        "bitbucket": "#markdown-header-"
     }
     ref_postfixes = {
-      "bitbucket": "_%d"
+        "bitbucket": "_%d"
     }
 
     # We ignore local references in case of unknown or unspecified markdown source
     if not MARKDOWN_SOURCE in ref_prefixes or \
-       not MARKDOWN_SOURCE in ref_postfixes:
+            not MARKDOWN_SOURCE in ref_postfixes:
         LOGGER.warning('Local references weren''t processed because '
                        '--markdownsrc wasn''t set or specified source isn''t supported')
         return html
@@ -534,23 +564,23 @@ def create_page(title, body, ancestors):
     session.headers.update({'Content-Type': 'application/json'})
 
     new_page = {'type': 'page', \
-               'title': title, \
-               'space': {'key': SPACE_KEY}, \
-               'body': { \
-                   'storage': { \
-                       'value': body, \
-                       'representation': 'storage' \
-                       } \
-                   }, \
-               'ancestors': ancestors, \
-               'metadata': { \
-                   'properties': { \
-            	  	     'editor': { \
-            	  		       'value': 'v%d' % VERSION \
-            	  	         } \
-              	       } \
-                   } \
-               }
+                'title': title, \
+                'space': {'key': SPACE_KEY}, \
+                'body': { \
+                    'storage': { \
+                        'value': body, \
+                        'representation': 'storage' \
+                        } \
+                    }, \
+                'ancestors': ancestors, \
+                'metadata': { \
+                    'properties': { \
+                        'editor': { \
+                            'value': 'v%d' % VERSION \
+                            } \
+                        } \
+                    } \
+                }
 
     LOGGER.debug("data: %s", json.dumps(new_page))
 
@@ -640,23 +670,23 @@ def update_page(page_id, title, body, version, ancestors, properties, attachment
     session.auth = (USERNAME, API_KEY)
     session.headers.update({'Content-Type': 'application/json'})
 
-    page_json = { \
-        "id": page_id, \
-        "type": "page", \
-        "title": title, \
-        "space": {"key": SPACE_KEY}, \
-        "body": { \
-            "storage": { \
-                "value": body, \
-                "representation": "storage" \
-                } \
-            }, \
-        "version": { \
-            "number": version + 1, \
-            "minorEdit" : True \
-            }, \
-        'ancestors': ancestors \
-        }
+    page_json = {
+        "id": page_id,
+        "type": "page",
+        "title": title,
+        "space": {"key": SPACE_KEY},
+        "body": {
+            "storage": {
+                "value": body,
+                "representation": "storage"
+            }
+        },
+        "version": {
+            "number": version + 1,
+            "minorEdit" : True
+        },
+        'ancestors': ancestors
+    }
 
     if LABELS:
         if 'metadata' not in page_json:
@@ -668,7 +698,7 @@ def update_page(page_id, title, body, version, ancestors, properties, attachment
 
         page_json['metadata']['labels'] = labels
 
-    response = session.put(url, data=json.dumps(page_json))
+    response = session.put(url, json=page_json)
     response.raise_for_status()
 
     if response.status_code == 200:
@@ -744,7 +774,8 @@ def upload_attachment(page_id, file, comment):
 
     file_to_upload = {
         'comment': comment,
-        'file': (filename, open(file, 'rb'), content_type, {'Expires': '0'})
+        'file': (filename, open(file, 'rb'), content_type, {'Expires': '0'}),
+        'minorEdit': True
     }
 
     attachment = get_attachment(page_id, filename)
@@ -786,13 +817,15 @@ def main():
 
     with codecs.open(MARKDOWN_FILE, 'r', 'utf-8') as mdfile:
         html = markdown.markdown(mdfile.read(), extensions=['markdown.extensions.tables',
-                                                       'markdown.extensions.fenced_code'])
+                                                            'markdown.extensions.fenced_code',
+                                                            'pymdownx.arithmatex'])
 
     html = '\n'.join(html.split('\n')[1:])
 
     html = convert_info_macros(html)
     html = convert_comment_block(html)
     html = convert_code_block(html)
+    html = convert_latex(html)
 
     if CONTENTS:
         html = add_contents(html)

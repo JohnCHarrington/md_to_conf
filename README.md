@@ -2,7 +2,9 @@
 
 A script to import a named markdown document into Confluence.
 
-It handles inline images as well as code blocks.
+It handles images in an opinionated way - all images are centered and text width. 
+
+It also handles code blocks and latex (inline and block).
 
 Also there is support for some custom markdown tags for use with commonly used Confluence macros.
 
